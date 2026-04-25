@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from database.connection import get_db
@@ -9,11 +10,24 @@ from schemas.movement import MovementCreate, MovementRead
 router = APIRouter(prefix="/movements", tags=["Movements"])
 
 
-@router.post("", response_model=MovementRead, status_code=status.HTTP_201_CREATED)
-def create_movement(movement: MovementCreate, db: Session = Depends(get_db)) -> Movement:
-    product = db.query(Product).filter(Product.id == movement.producto_id).first()
+def _get_product_or_404(db: Session, product_id: int) -> Product:
+    try:
+        product = db.query(Product).filter(Product.id == product_id).first()
+    except SQLAlchemyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error al consultar productos",
+        ) from exc
+
     if product is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Producto no encontrado")
+
+    return product
+
+
+@router.post("", response_model=MovementRead, status_code=status.HTTP_201_CREATED)
+def create_movement(movement: MovementCreate, db: Session = Depends(get_db)) -> Movement:
+    product = _get_product_or_404(db=db, product_id=movement.producto_id)
 
     if movement.tipo == "entrada":
         product.stock += movement.cantidad
@@ -31,12 +45,26 @@ def create_movement(movement: MovementCreate, db: Session = Depends(get_db)) -> 
         cantidad=movement.cantidad,
         fecha=movement.fecha,
     )
-    db.add(db_movement)
-    db.commit()
-    db.refresh(db_movement)
+    try:
+        db.add(db_movement)
+        db.commit()
+        db.refresh(db_movement)
+    except SQLAlchemyError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error al registrar movimiento",
+        ) from exc
+
     return db_movement
 
 
 @router.get("", response_model=list[MovementRead])
 def list_movements(db: Session = Depends(get_db)) -> list[Movement]:
-    return db.query(Movement).order_by(Movement.fecha.desc(), Movement.id.desc()).all()
+    try:
+        return db.query(Movement).order_by(Movement.fecha.desc(), Movement.id.desc()).all()
+    except SQLAlchemyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error al listar movimientos",
+        ) from exc

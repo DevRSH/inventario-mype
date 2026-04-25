@@ -5,7 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class MovementBase(BaseModel):
-    producto_id: int
+    producto_id: int = Field(gt=0)
     tipo: Literal["entrada", "salida"]
     cantidad: int = Field(gt=0)
     fecha: datetime = Field(default_factory=datetime.utcnow)
