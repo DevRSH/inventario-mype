@@ -1,10 +1,12 @@
-from pydantic import BaseModel, ConfigDict
+from typing import Annotated
+
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 
 class ProductBase(BaseModel):
-    nombre: str
-    precio: float
-    stock: int
+    nombre: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+    precio: float = Field(gt=0)
+    stock: int = Field(ge=0)
     categoria: str
 
 
